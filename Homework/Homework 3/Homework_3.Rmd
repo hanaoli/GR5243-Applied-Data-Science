@@ -1,0 +1,197 @@
+---
+title: "Homework 3"
+author: "Hanao Li"
+date: "April 7, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message = FALSE, warning = FALSE}
+library(Hmisc)
+library(data.table)
+library(DT)
+```
+
+```{r}
+dat <- fread(input = "../Data/Homework 3 Data.csv", verbose = FALSE)
+```
+
+```{r}
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  percentage.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)
+}
+
+mean.diff <- function(x, y){
+  return(mean(x, na.rm=TRUE) - mean(y, na.rm=TRUE))
+}
+
+is.nan.function <- function(x){
+  do.call(cbind, lapply(x, is.nan))  
+}
+```
+
+
+```{r}
+#Constant
+id.name <- "id"
+age.name <- "Age"
+gender.name <- "Gender"
+income.name <- "Income"
+region.name <- "Region"
+persona.name <- "Persona"
+product.name <- "Product"
+awareness.name <- "Awareness"
+consideration.name <- "Consideration"
+consumption.name <- "Consumption"
+satisfaction.name <- "Satisfaction"
+advocacy.name <- "Advocacy"
+bp.pattern <- "BP_"
+age.group.name <- "Age_Group"
+income.group.name <- "Income_Group"
+cuts.age <-c(18, 35, 50, 65, 120)
+cuts.income <-1000*c(0, 50, 75, 100, 150, 250)
+
+dat[, eval(age.group.name) := cut2(x = get(age.name), cuts = cuts.age)]
+dat[, eval(income.group.name) := cut2(x = get(income.name), cuts = cuts.income)]
+dat[, eval(satisfaction.name) := get(satisfaction.name) / 10]
+unique.age.groups <-dat[, sort(unique(get(age.group.name)))]
+unique.genders <-dat[, sort(unique(get(gender.name)))]
+unique.income.groups <-dat[, sort(unique(get(income.group.name)))]
+unique.regions <-dat[, sort(unique(get(region.name)))]
+unique.personas <-dat[, sort(unique(get(persona.name)))]
+unique.products <-dat[, unique(get(product.name))]
+respondent.variables <-c(age.group.name, gender.name, income.group.name, region.name, persona.name)
+states.of.engagement <-c(awareness.name, consideration.name, consumption.name, satisfaction.name, advocacy.name)
+bp.traits <-names(dat)[grep(pattern = bp.pattern, x = names(dat))]
+```
+
+### Question 1
+
+#### a)
+```{r}
+#Age Group Percentage
+percentage.table(x = dat[get(product.name) ==get(product.name)[1], get(age.group.name)])
+#Gender Percentage
+percentage.table(x = dat[get(product.name) ==get(product.name)[1], get(gender.name)])
+#Income Group Percentage
+percentage.table(x = dat[get(product.name) ==get(product.name)[1], get(income.group.name)])
+#Region Percentage
+percentage.table(x = dat[get(product.name) ==get(product.name)[1], get(region.name)])
+#Persona Percentage
+percentage.table(x = dat[get(product.name) ==get(product.name)[1], get(persona.name)])
+```
+
+#### b)
+
+#### Visual Display in Reporting Engine
+
+
+### Question 2
+
+### #a)
+```{r}
+#Top 5 in the Northeast
+awareness_rates <- dat[get(region.name) == "Northeast", .(Mean = round(100 * mean(get(awareness.name), na.rm = TRUE), 1)), by = product.name]
+setorderv(x = awareness_rates, cols = "Mean", order = -1)
+awareness_rates[1:5]
+```
+
+#### b)
+```{r}
+#Top 5 Female Advocacy at least $100000
+advocacy_rates <- dat[get(income.name) >= 100000 & get(gender.name) == "Female", .(Mean = round(100 * mean(get(advocacy.name), na.rm = TRUE), 1)), by = product.name]
+setorderv(x = advocacy_rates, cols = "Mean", order = -1)
+advocacy_rates[1:5]
+```
+
+#### c)
+
+#### Visual Display in Reporting Engine
+
+### Question 3
+
+```{r}
+#Inverted Average Score Function for Negative Traits
+IAS <- function(x){
+  10 - mean(x, na.rm = TRUE)
+}
+```
+
+#### a)
+```{r}
+#Separate Into Positive and Negative Traits
+bp_positive <- bp.traits[1:8]
+bp_negative <- bp.traits[9:12]
+#Top 5 Brands overall
+dat_positive <- dat[, lapply(X = .SD, FUN = "mean", na.rm = TRUE), by = product.name, .SDcols = bp_positive]
+dat_negative <- dat[, lapply(X = .SD, FUN = "IAS"), by = product.name, .SDcols = bp_negative]
+dat_all <- merge(dat_positive, dat_negative)
+overall_perception <- dat_all[, .(Average = round(rowMeans(.SD), 1)), by = product.name, .SDcols = bp.traits]
+setorderv(x = overall_perception, cols = "Average", order = -1)
+overall_perception[1:5]
+```
+
+#### b)
+
+#### Visual Display in Reporting Engine
+
+### Question 4
+
+#### a)
+```{r}
+diff_con_awa <- dat[, .(Difference = round(mean.diff(get(consumption.name), get(awareness.name)) * 100, 1)), by = product.name]
+setorderv(diff_con_awa, cols = "Difference", order = -1)
+diff_con_awa[1:5]
+barplot(height = diff_con_awa[1:5, Difference], names.arg = diff_con_awa[1:5, Product], space=0.01, las =1, main =sprintf('Difference between Rate of Consumption and Rate of Awareness'), ylab ="Percentage", ylim =c(0, 1.2*max(diff_con_awa[1:5, Difference], na.rm =TRUE)),col ="dodgerblue")
+text(x =-0.4+1:diff_con_awa[1:5, .N] *(1+0), y = diff_con_awa[1:5, Difference], labels =sprintf("%.1f%%", diff_con_awa[1:5, Difference]), pos =3)
+```
+
+#### b)
+```{r}
+diff_awa_sat <- dat[, .(Difference = round(mean.diff(get(awareness.name), get(satisfaction.name)) * 100, 1)), by = product.name]
+setorderv(diff_awa_sat, cols = "Difference", order = -1)
+diff_awa_sat[1:5]
+barplot(height = diff_awa_sat[1:5, Difference], names.arg = diff_awa_sat[1:5, Product], space=0.01, las =1, main =sprintf('Difference between Rate of Awareness and Average of Satisfication'), ylab ="Percentage", ylim =c(0, 1.2*max(diff_awa_sat[1:5, Difference], na.rm =TRUE)),col ="dodgerblue")
+text(x =-0.4+1:diff_awa_sat[1:5, .N] *(1+0), y = diff_awa_sat[1:5, Difference], labels =sprintf("%.1f%%", diff_awa_sat[1:5, Difference]), pos =3)
+```
+
+
+#### c)
+
+#### Visual Display in Reporting Engine
+
+### Question 5
+
+#### a)
+```{r}
+awa_agg <- merge(dat[get(product.name) == "Buzzdial"], dat[get(product.name) != "Buzzdial", .(Aggregated = mean(get(awareness.name), na.rm = TRUE)), by = id.name])
+awa_agg$Aggregated[is.nan(awa_agg$Aggregated)] <- 0
+awa_mod <- glm(Awareness ~ Age_Group + Income_Group + Gender + Region + Persona + Aggregated, family = binomial, data = awa_agg)
+awa_value <- round(cbind(exp(cbind(coef(awa_mod), confint(awa_mod))), coef(summary(awa_mod))[, 4]), 3)
+colnames(awa_value) <- c("Odds Ratio", "2.5%", "97.5%", "P-value")
+datatable(awa_value)
+```
+
+#### From the model result, we could see that for a threshold value of 0.05, intercept, age group, gender, Region Northeast and Region West, Persona Consistent Compromiser and significant variables. Aggregated is not significant since its pvalue is 0.226. It has a odds ratio 95% confidence from 0.495 to 1.181 and 1 is included in the interval and we can say awareness of other products does not have an impact on the awareness of this product. 
+
+#### b)
+```{r}
+sat_agg <- merge(dat[get(product.name) == "Buzzdial"], dat[get(product.name) != "Buzzdial", .(Aggregated = mean(get(satisfaction.name), na.rm = TRUE)), by = id.name])
+sat_agg$Aggregated[is.nan(sat_agg$Aggregated)] <- 0
+sat_mod <- lm(Satisfaction ~ Age_Group + Income_Group + Gender + Region + Persona + Aggregated, data = sat_agg)
+sat_value <- round(cbind(coef(sat_mod), confint(sat_mod), summary(sat_mod)$coefficients[, 4]), 3)
+colnames(sat_value) <- c("Coefficients", "2.5%", "97.5%", "P-value")
+datatable(sat_value)
+```
+
+#### From the model result, we could see that for a threshold value of 0.05, intercept, age group, Region, Persona and Aggregated variables are all significant. It has a coeficients 95% confidence interval from 0.044 to 0.079 and 0 is not included and we can say satisfaction of other products does have a impositive effact on the satisfaction of this product.
+
+#### c)
+
+#### Visual Display in Reporting Engine
