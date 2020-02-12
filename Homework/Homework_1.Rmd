@@ -1,0 +1,205 @@
+---
+title: "Homework 1"
+author: "Hanao Li"
+date: "February 13, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+####Question 1
+
+```{r}
+library(data.table)
+setwd("c:/Users/36576/Desktop/gr5243")
+pk <- fread('Prior Courses.csv')
+grade <- fread('Grades.csv')
+l2 <- fread('Knowledge Check -- Level 2.csv')
+l5 <- fread('Knowledge check -- Level 5.csv')
+```
+
+####Question 1a)
+
+```{r}
+dim(grade)
+dim(l2)
+dim(l5)
+dim(pk)
+```
+
+####Question 1b)
+
+```{r}
+pk[,.(length(unique(`Student ID`)))]
+l2[,.(length(unique(`Student ID`)))]
+l5[,.(length(unique(`Student ID`)))]
+grade[,.(length(unique(`Student ID`)))]
+# So the number of unique students is 100
+```
+
+####Question 2
+
+```{r}
+# As we can see from the previous question, the prior courses file contain more than 1 row per student.
+library(DT)
+display.multiple.records <- function(x){
+  id <- names((table(x$`Student ID`) > 1)[(table(x$`Student ID`) > 1) == TRUE])
+  records <- x[`Student ID` %in% id]
+  setorderv(records, "Student ID")
+  return(datatable(records))
+}
+display.multiple.records(grade)
+display.multiple.records(l2)
+display.multiple.records(l5)
+display.multiple.records(pk)
+```
+
+
+####Question 3
+
+####Question 3a)
+```{r}
+id <- names((table(pk$`Student ID`) > 1)[(table(pk$`Student ID`) > 1) == TRUE])
+summarize.pk.class <- function(x){
+  x$Trigonometry <- as.numeric(x$Trigonometry)
+  variables <- c("Trigonometry", "Calculus")
+  measured.records <- c(length(which(!is.na(x$Trigonometry))), length(which(!is.na(x$Calculus))))
+  t <- 0
+  for (i in 1:length(id)){
+      if(sum(!is.na(x$Trigonometry[x$`Student ID` %in% id[i]])) != 0){
+      t <- t + 1
+    }
+  }
+  c <- 0
+  for (i in 1:length(id)){
+    if(sum(!is.na(x$Calculus[x$`Student ID` %in% id[i]])) != 0){
+      c <- c + 1
+    }
+  }  
+  unique.records <- measured.records - c(t,c)
+  mean.records <- c(round(mean(x$Trigonometry, na.rm = TRUE), 2), round(mean(x$Calculus, na.rm = TRUE), 2))
+  std.records <- c(round(sd(x$Trigonometry, na.rm = TRUE), 2), round(sd(x$Calculus, na.rm = TRUE), 2))  
+  new <- data.table(variables, measured.records, unique.records, mean.records, std.records)
+  datatable(new)  
+}
+summarize.pk.class(pk)
+```
+
+####Question 3b)
+```{r}
+for (i in 1:length(id)){
+  pk[pk$`Student ID` == id[i]]$Trigonometry <- max(pk$Trigonometry[pk$`Student ID` %in% id[i]])
+  pk[pk$`Student ID` == id[i]]$Calculus <- max(pk$Calculus[pk$`Student ID` %in% id[i]])
+}
+pk$Trigonometry <- as.numeric(pk$Trigonometry)
+pk$PriorKnowledgeLevel <- 0.5 * (pk$Trigonometry + pk$Calculus)
+n <- which(is.na(pk$Trigonometry))
+for (i in 1:length(n)){
+  pk[n[i]]$PriorKnowledgeLevel <- pk[n[i]]$Calculus
+}
+n <- which(is.na(pk$Calculus))
+for (i in 1:length(n)){
+  pk[n[i]]$PriorKnowledgeLevel <- pk[n[i]]$Trigonometry
+}
+pk.reduced <- pk[1:100, ]
+datatable(pk.reduced)
+datatable(pk.reduced[`Student ID` %in% id])
+```
+
+####Question 3c)
+```{r}
+summarize.pk.reduced <- function(x){
+  variables <- c("Trigonometry", "Calculus", "PriorKnowledgeLevel")
+  measured.records <- c(length(which(!is.na(x$Trigonometry))), length(which(!is.na(x$Calculus))), length(x$PriorKnowledgeLevel))
+  unique.records <- measured.records
+  mean.records <- c(round(mean(x$Trigonometry, na.rm = TRUE), 2), round(mean(x$Calculus, na.rm = TRUE), 2), round(mean(x$PriorKnowledgeLevel), 2))
+  std.records <- c(round(sd(x$Trigonometry, na.rm = TRUE), 2), round(sd(x$Calculus, na.rm = TRUE), 2), round(sd(x$PriorKnowledgeLevel), 2))  
+  new <- data.table(variables, measured.records, unique.records, mean.records, std.records)
+  datatable(new)  
+}
+summarize.pk.reduced(pk.reduced)
+```
+
+####Question 4
+```{r}
+m <- merge(pk.reduced, l2, by = "Student ID")
+m <- merge(m, l5, by = 'Student ID')
+m <- merge(m, grade, by = 'Student ID')
+m$ordered <- as.numeric(unlist(regmatches(m$`Student ID`, gregexpr("[0-9]+", m$`Student ID`))))
+setorderv(m, cols = 'ordered')
+m$ordered <- NULL
+cols <- names(m)[2:31]
+m[,(cols) := round(.SD,2), .SDcols=cols]
+datatable(m)
+```
+
+####Question 5
+```{r}
+topic <- colnames(l2)[2:4]
+nstudents <- c(sum(!is.na(l2$Mechanics)), sum(!is.na(l2$Momentum)), sum(!is.na(l2$Gravity)))
+meanscore <- c(round(mean(l2$Mechanics, na.rm = TRUE), 2), round(mean(l2$Momentum, na.rm = TRUE), 2), round(mean(l2$Gravity, na.rm = TRUE), 2))
+stdscore <- c(round(sd(l2$Mechanics, na.rm = TRUE), 2), round(sd(l2$Momentum, na.rm = TRUE), 2), round(sd(l2$Gravity, na.rm = TRUE), 2))
+percentage <- round(c(sum(l2$Mechanics >= 2, na.rm = TRUE), sum(l2$Momentum >= 2, na.rm = TRUE), sum(l2$Gravity >= 2, na.rm = TRUE)) / nstudents, 2)
+meanmin <- c(round(mean(l2$`Time: Mechanics`, na.rm = TRUE), 2), round(mean(l2$`Time: Momentum`, na.rm = TRUE), 2), round(mean(l2$`Time: Gravity`, na.rm = TRUE), 2))
+stdmean <- c(round(sd(l2$`Time: Mechanics`, na.rm = TRUE), 2), round(sd(l2$`Time: Momentum`, na.rm = TRUE), 2), round(sd(l2$`Time: Gravity`, na.rm = TRUE), 2))
+table1 <- data.table(topic, nstudents, meanscore, stdscore, percentage, meanmin, stdmean)
+datatable(table1)
+```
+
+####Question 6
+```{r}
+topic <- colnames(l5)[2:7]
+nstudents <- c(sum(!is.na(l5$Mechanics)), sum(!is.na(l5$Momentum)), sum(!is.na(l5$Gravity)), sum(!is.na(l5$Electricity)), sum(!is.na(l5$Magnetism)), sum(!is.na(l5$Relativity)))
+meanscore <- c(round(mean(l5$Mechanics, na.rm = TRUE), 2), round(mean(l5$Momentum, na.rm = TRUE), 2), round(mean(l5$Gravity, na.rm = TRUE), 2), round(mean(l5$Electricity, na.rm = TRUE), 2), round(mean(l5$Magnetism, na.rm = TRUE), 2), round(mean(l5$Relativity, na.rm = TRUE), 2))
+stdscore <- c(round(sd(l5$Mechanics, na.rm = TRUE), 2), round(sd(l5$Momentum, na.rm = TRUE), 2), round(sd(l5$Gravity, na.rm = TRUE), 2), round(sd(l5$Electricity, na.rm = TRUE), 2), round(sd(l5$Magnetism, na.rm = TRUE), 2), round(sd(l5$Relativity, na.rm = TRUE), 2))
+percentage <- round(c(sum(l5$Mechanics >= 5, na.rm = TRUE), sum(l5$Momentum >= 5, na.rm = TRUE), sum(l5$Gravity >= 5, na.rm = TRUE), sum(l5$Electricity >= 5, na.rm = TRUE), sum(l5$Magnetism >= 5, na.rm = TRUE), sum(l5$Relativity >= 5, na.rm = TRUE)) / nstudents, 2)
+meanmin <- c(round(mean(l5$`Time: Mechanics`, na.rm = TRUE), 2), round(mean(l5$`Time: Momentum`, na.rm = TRUE), 2), round(mean(l5$`Time: Gravity`, na.rm = TRUE), 2), round(mean(l5$`Time: Electricity`, na.rm = TRUE), 2), round(mean(l5$`Time: Magnetism`, na.rm = TRUE), 2), round(mean(l5$`Time: Relativity`, na.rm = TRUE), 2))
+stdmean <- c(round(sd(l5$`Time: Mechanics`, na.rm = TRUE), 2), round(sd(l5$`Time: Momentum`, na.rm = TRUE), 2), round(sd(l5$`Time: Gravity`, na.rm = TRUE), 2), round(sd(l5$`Time: Electricity`, na.rm = TRUE), 2), round(sd(l5$`Time: Magnetism`, na.rm = TRUE), 2), round(sd(l5$`Time: Relativity`, na.rm = TRUE), 2))
+table2 <- data.table(topic, nstudents, meanscore, stdscore, percentage, meanmin, stdmean)
+datatable(table2)
+```
+
+####Question 7
+```{r}
+topics <- c("Mechanics 1", "Mechanics 2", "Momentum 1", "Momentum 2", "Gravity 1", "Gravity 2", "Electricity", "Magnetism", "Relativity")
+correlations <- round(c(cor(m$Mechanics.x, m$`Time: Mechanics.x`, use = 'complete.obs'), cor(m$Mechanics.y, m$`Time: Mechanics.y`, use = 'complete.obs'), cor(m$Momentum.x, m$`Time: Momentum.x`, use = 'complete.obs'), cor(m$Momentum.y, m$`Time: Momentum.y`, use = 'complete.obs'), cor(m$Gravity.x, m$`Time: Gravity.x`, use = 'complete.obs'), cor(m$Gravity.y, m$`Time: Gravity.y`, use = 'complete.obs'), cor(m$Electricity, m$`Time: Electricity`, use = 'complete.obs'), cor(m$Magnetism, m$`Time: Magnetism`, use = 'complete.obs'), cor(m$Relativity, m$`Time: Relativity`, use = 'complete.obs')), 2)
+cortable <- data.table(topics, correlations)
+datatable(cortable)
+# I believe spendind more time on the digital system should be benefical. But from the results, we could see that spending more time on the digital system is not benefical. The reason why it is not benefical might because students that know the materials could finish the assignments faster while students who don't understand the materials will finish those assignements slower than expected. 
+```
+
+####Question 8
+```{r}
+m$`Homework Average` <- round(rowMeans(subset(m, select = c(23:28))), 2)
+variablename <- c(colnames(m)[23:32])
+measuredvalue <- c(sum(!is.na(m$`HW 1: Mechanics`)), sum(!is.na(m$`HW 2: Momentum`)), sum(!is.na(m$`HW 3: Gravity`)), sum(!is.na(m$`HW 4: Electricity`)), sum(!is.na(m$`HW 5: Magnetism`)), sum(!is.na(m$`HW 6: Relativity`)), sum(!is.na(m$Midterm)), sum(!is.na(m$`Final Exam`)), sum(!is.na(m$`Total Score`)), sum(!is.na(m$`Homework Average`)))
+meanscores <- round(c(mean(m$`HW 1: Mechanics`, na.rm = TRUE), mean(m$`HW 2: Momentum`, na.rm = TRUE), mean(m$`HW 3: Gravity`, na.rm = TRUE), mean(m$`HW 4: Electricity`, na.rm = TRUE), mean(m$`HW 5: Magnetism`, na.rm = TRUE), mean(m$`Homework Average`, na.rm = TRUE), mean(m$Midterm, na.rm = TRUE), mean(m$`Final Exam`, na.rm = TRUE), mean(m$`Total Score`, na.rm = TRUE), mean(m$`Homework Average`, na.rm = TRUE)), 2)
+stdscores <- round(c(sd(m$`HW 1: Mechanics`, na.rm = TRUE), sd(m$`HW 2: Momentum`, na.rm = TRUE), sd(m$`HW 3: Gravity`, na.rm = TRUE), sd(m$`HW 4: Electricity`, na.rm = TRUE), sd(m$`HW 5: Magnetism`, na.rm = TRUE), sd(m$`Homework Average`, na.rm = TRUE), sd(m$Midterm, na.rm = TRUE), sd(m$`Final Exam`, na.rm = TRUE), sd(m$`Total Score`, na.rm = TRUE), sd(m$`Homework Average`, na.rm = TRUE)), 2)
+table3 <- data.table(variablename, measuredvalue, meanscores, stdscores)
+datatable(table3)
+```
+
+####Question 9
+```{r}
+outcomes <- c("Homework Average", "Midterm Score", "Final Exam Score", "Total Score")
+Prior_Knowledge <- round(c(cor(m$`Homework Average`, m$PriorKnowledgeLevel), cor(m$Midterm, m$PriorKnowledgeLevel), cor(m$`Final Exam`, m$PriorKnowledgeLevel), cor(m$`Total Score`, m$PriorKnowledgeLevel)), 2)
+l5[is.na(l5)] <- 0
+m$`Total Time` <- round(l5$`Time: Mechanics` + l5$`Time: Momentum` + l5$`Time: Gravity` + l5$`Time: Electricity` + l5$`Time: Magnetism` + l5$`Time: Relativity`, 2)
+Total_Minutes <- round(c(cor(m$`Homework Average`, m$`Total Time`), cor(m$Midterm, m$`Total Time`), cor(m$`Final Exam`, m$`Total Time`), cor(m$`Total Score`, m$`Total Time`)), 2)
+l5$sumzero <- (l5$Mechanics == 0) + (l5$Momentum == 0) + (l5$Gravity == 0) + (l5$Electricity == 0) + (l5$Magnetism == 0) + (l5$Relativity == 0)
+m$avgscore <- round((l5$Mechanics + l5$Momentum + l5$Gravity + l5$Electricity + l5$Magnetism + l5$Relativity) / (6 - l5$sumzero), 2)
+Average_Score <- round(c(cor(m$`Homework Average`, m$avgscore), cor(m$Midterm, m$avgscore), cor(m$`Final Exam`, m$avgscore), cor(m$`Total Score`, m$avgscore)), 2)
+table4 <- data.table(outcomes, Prior_Knowledge, Total_Minutes, Average_Score)
+datatable(table4)
+```
+
+####Question 10
+
+From the results we get from question 9, we could see that the digital system student used isn't very helpful. It has a little impact on the Homework, Midterm, Final and Total Score. The average score has a realtive high impact to homework average and also some impact towards the final exam and total score. The prior knonledge has a positive effect on the midterm, final and total score. We can recommend students to preview the course materials to have some prior understanding of the concepts and they can improve their score by doing this and do well in the knowledge check test. 
+
+
+
+
+
