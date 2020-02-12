@@ -1,0 +1,270 @@
+---
+title: "Homework 2"
+author: "Hanao Li"
+date: "February 26, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+####Question 1
+```{r}
+library(data.table)
+setwd("C:/Users/36576/Desktop/gr5243")
+data <- fread('Homework 2 Data.csv')
+dim(data)
+length(unique(data$id))
+colnames(data)
+```
+There are `r dim(data)[1]` rows, `r dim(data)[2]` columns and `r length(unique(data$id))` unique patients. All of the column names mathc up with the description of the data set.
+
+
+####Question 2
+```{r}
+#Correct Death Time
+data[death == 1, begin:= as.integer(end - 1)]
+
+###Check Begin
+class(data$begin)
+#Begin < 0
+data[begin < 0, .N]
+#Begin > End
+data[begin >= end, .N]
+
+###Check End
+class(data$end)
+#End < 0
+data[end < 0, .N]
+
+###Check Unique Baseline
+data[begin ==0, .(length(unique(id)))]
+```
+Begin and End looks okay
+
+```{r}
+###Check Age
+class(data$age)
+summary(data$age)
+```
+Age looks okay
+
+```{r}
+###Check diabetes
+class(data$diabetes)
+summary(data$diabetes)
+```
+Diabetes looks okay
+
+```{r}
+###Check hypertension
+class(data$hypertension)
+summary(data$hypertension)
+```
+Hypertension looks okay
+
+```{r}
+###Check kidney_disease
+class(data$kidney_disease)
+summary(data$kidney_disease)
+```
+Kidney disease looks okay
+
+```{r}
+###check Ace
+class(data$ace)
+summary(data$ace)
+```
+
+```{r}
+###Check BB
+class(data$beta.blocker)
+table(data$beta.blocker)
+```
+Beta blocker looks not okay. We will change "Filled, Picked up, True, Utilized, yeah, yes, Yes" to 1", "didn't take, False, N, no, No, nope, Not filled" to 0
+
+```{r}
+data[data$beta.blocker == "didn't take", ]$beta.blocker <- "0"
+data[data$beta.blocker == "False", ]$beta.blocker <- "0"
+data[data$beta.blocker == "N", ]$beta.blocker <- "0"
+data[data$beta.blocker == "no", ]$beta.blocker <- "0"
+data[data$beta.blocker == "No", ]$beta.blocker <- "0"
+data[data$beta.blocker == "nope", ]$beta.blocker <- "0"
+data[data$beta.blocker == "Not filled", ]$beta.blocker <- "0"
+data$beta.blocker <- as.integer(data$beta.blocker)
+data[is.na(data$beta.blocker), ]$beta.blocker <- 1
+summary(data$beta.blocker)
+```
+Beta blocker looks okay now
+
+```{r}
+###Check Statin
+class(data$statin)
+table(data$statin)
+```
+Statin looks not okay. Since we don't know whether the patients take the medicine, we will change those non 0, 1s to NA
+
+```{r}
+data$statin <- as.integer(data$statin)
+summary(data$statin)
+```
+Statin looks okay now
+
+```{r}
+###Check Hospital
+class(data$hospital)
+summary(data$hospital)
+```
+Hospital looks okay
+
+```{r}
+###Check Heart Attack
+class(data$heart.attack)
+summary(data$heart.attack)
+```
+Heart Attack looks okay
+
+```{r}
+###Check Death
+class(data$death)
+summary(data$death)
+```
+Death looks okay
+
+####Question 3
+```{r}
+library(DT)
+Summaries <- c("Age", "Diabetes", "Hypertension", "Kidney_Disease")
+Average <- round(unlist(c(data[begin == 0, .(mean(age))], data[begin == 0, .(mean(diabetes))]*100, data[begin == 0, .(mean(hypertension))]*100, data[begin == 0, .(mean(kidney_disease))]*100)), 1)
+Average <- c(Average[1], paste(Average[2:4], c("%")))
+Std <- round(unlist(c(data[begin == 0, .(sd(age))], data[begin == 0, .(sd(diabetes))]*100, data[begin == 0, .(sd(hypertension))]*100, data[begin == 0, .(sd(kidney_disease))]*100)), 1)
+Std <- c(Std[1], paste(Std[2:4], c("%")))
+patientsummary <- data.table(Summaries, Average, Std)
+datatable(patientsummary)
+```
+
+
+####Question 4
+```{r}
+#Heart Attack
+data[heart.attack == 1, .N]
+
+#Death
+data[death == 1, .N]
+
+#Hosptial
+data[, .(sum(diff(hospital) > 0))]
+
+#Number of Rows with Hospital
+data[hospital == 1, .N]
+```
+As we can see here the difference is `r data[hospital == 1, .N] - data[, .(sum(diff(hospital) > 0))]` between the number of rows with hospital and hospital records.
+
+
+####Question 5
+```{r}
+#Death
+Death <- unlist(c(data[ace == 1, .(sum(death))], data[ace == 0, .(sum(death))], data[beta.blocker == 1, .(sum(death))], data[beta.blocker == 0, .(sum(death))], data[statin == 1, .(sum(death))], data[statin == 0, .(sum(death))]))
+#Heart Attack
+Heart_Attack <- unlist(c(data[ace == 1, .(sum(heart.attack))], data[ace == 0, .(sum(heart.attack))], data[beta.blocker == 1, .(sum(heart.attack))], data[beta.blocker == 0, .(sum(heart.attack))], data[statin == 1, .(sum(heart.attack))], data[statin == 0, .(sum(heart.attack))]))
+##Hospitalization
+Hospitalization <- unlist(c(data[ace == 1, .(sum(hospital))], data[ace == 0, .(sum(hospital))], data[beta.blocker == 1, .(sum(hospital))], data[beta.blocker == 0, .(sum(hospital))], data[statin == 1, .(sum(hospital))], data[statin == 0, .(sum(hospital))]))
+
+Variables <- c("With Ace", "Without Ace", "With BB", "Without BB", "With Statin", "Without Statin")
+medicationsummary <- data.table(Variables, Death, Heart_Attack, Hospitalization)
+datatable(medicationsummary)
+```
+
+
+####Question 6
+```{r}
+#Total person-years
+data[, .(round((sum(end - begin))/365.25, 1))]
+#Average Per Person
+data[, .(round((sum(end - begin))/365.25/10000, 1))]
+```
+
+
+####Question 7
+```{r}
+#Ace
+acetime <- unlist(data[ace == 1, .(round((sum(end - begin))/365.25, 1))])
+offace <- unlist(data[ace == 0, .(round((sum(end - begin))/365.25, 1))])
+#BB
+bbtime <- unlist(data[beta.blocker == 1, .(round((sum(end - begin))/365.25, 1))])
+offbb <- unlist(data[beta.blocker == 0, .(round((sum(end - begin))/365.25, 1))])
+#Statin
+statintime <- unlist(data[statin == 1, .(round((sum(end - begin))/365.25, 1))])
+offstatin <- unlist(data[statin == 0, .(round((sum(end - begin))/365.25, 1))])
+
+
+Time <- c(acetime, bbtime, statintime)
+OffTime <- c(offace, offbb, offstatin)
+MedicationTime <- c("Ace", "Beta Blocker", "Statin")
+medicationtotal <- data.table(MedicationTime, Time, OffTime)
+datatable(medicationtotal)
+
+#Missing Time
+sum(data[, .(max(end)), id][[2]]) - data[, .(sum(end - begin))]
+```
+No time was missing from observation
+
+####Question 8
+```{r}
+#Overall follow up time 
+Total_Time <- unlist(data[, .(round((sum(end - begin))/365.25, 1))])
+#Each outcome
+Event_Outcome <- unlist(c(data[heart.attack == 1, .N], data[death == 1, .N], data[, .(sum(diff(hospital) > 0))]))
+#Ratio
+Crude_Rate <- round(Event_Outcome / Total_Time * 100, 1)
+
+vname <- c("Heart Attack", "Death", "Hospitalization")
+
+Crude_Event_Rate <- data.table(vname, Total_Time, Event_Outcome, Crude_Rate)
+datatable(Crude_Event_Rate)
+```
+
+
+####Question 9
+```{r}
+#Number of Hospitalization Events
+Hospitalization_Outcome <- unlist(c(data[ace == 1, .(sum(diff(hospital) > 0))], data[ace == 0, .(sum(diff(hospital) > 0))], data[beta.blocker == 1, .(sum(diff(hospital) > 0))], data[beta.blocker == 0, .(sum(diff(hospital) > 0))], data[statin == 1, .(sum(diff(hospital) > 0))], data[statin == 0, .(sum(diff(hospital) > 0))]))
+#Hospitalization Rate
+htime<- unlist(c(data[ace == 1, .((sum(end - begin))/365.25)], data[ace == 0, .((sum(end - begin))/365.25)], data[beta.blocker == 1, .((sum(end - begin))/365.25)], data[beta.blocker == 0, .((sum(end - begin))/365.25)], data[statin == 1, .((sum(end - begin))/365.25)], data[statin == 0, .((sum(end - begin))/365.25)]))
+Hospitalization_Rate <- round(100 * Hospitalization_Outcome / htime, 1)
+
+#Number of Heart Attack Events
+Heart_Attack_Outcome <- unlist(c(data[ace == 1, .(sum(heart.attack))], data[ace == 0, .(sum(heart.attack))], data[beta.blocker == 1, .(sum(heart.attack))], data[beta.blocker == 0, .(sum(heart.attack))], data[statin == 1, .(sum(heart.attack))], data[statin == 0, .(sum(heart.attack))]))
+#Heart Attack Rate
+Heart_Attack_Rate <- round(100 * Heart_Attack_Outcome / htime, 1)
+
+#Number of Death
+Death_Outcome <- unlist(c(data[ace == 1, .(sum(death))], data[ace == 0, .(sum(death))], data[beta.blocker == 1, .(sum(death))], data[beta.blocker == 0, .(sum(death))], data[statin == 1, .(sum(death))], data[statin == 0, .(sum(death))]))
+
+#Death Rate
+Death_Rate <- round(100 * Death_Outcome / htime, 1)
+
+Variables <- c("With Ace", "Without Ace", "With BB", "Without BB", "With Statin", "Without Statin")
+Medication_Usage <- data.table(Variables, Hospitalization_Outcome, Hospitalization_Rate, Heart_Attack_Outcome, Heart_Attack_Rate, Death_Outcome, Death_Rate)
+datatable(Medication_Usage)
+```
+
+
+####Question 10
+```{r}
+#Hospitalization OR
+Hospitalization_OR <- round(c(Hospitalization_Rate[1] / Hospitalization_Rate[2], Hospitalization_Rate[3] / Hospitalization_Rate[4], Hospitalization_Rate[5] / Hospitalization_Rate[6]), 2)
+
+#Heart Attack OR
+Heart_Attack_OR <- round(c(Heart_Attack_Rate[1] / Heart_Attack_Rate[2], Heart_Attack_Rate[3] / Heart_Attack_Rate[4], Heart_Attack_Rate[5] / Heart_Attack_Rate[6]), 2)
+  
+#Death OR
+Death_OR <- round(c(Death_Rate[1] / Death_Rate[2], Death_Rate[3] / Death_Rate[4], Death_Rate[5] / Death_Rate[6]), 2)
+
+Variable_Name <- c("With Ace", " With BB", "With Statin")
+OddsRatio <- data.table(Variable_Name, Hospitalization_OR, Heart_Attack_OR, Death_OR)
+datatable(OddsRatio)
+```
+
