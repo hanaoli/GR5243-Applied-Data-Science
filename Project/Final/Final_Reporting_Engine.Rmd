@@ -1,0 +1,399 @@
+---
+title: "Final"
+output: 
+  flexdashboard::flex_dashboard:
+   theme: simplex
+runtime: shiny
+---
+
+
+```{r setup, include=FALSE}
+if(!require("pacman")) install.packages("pacman")
+p_load(wordcloud, ggraph, igraph, Rmisc, scales, tidytext, text2vec, stopwords, Matrix, tokenizers, knitr, keras, tensorflow, magrittr, tidyverse, caret, flexdashboard, shiny, rmarkdown, Hmisc, DT, data.table, viridis, leaflet.extras, htmltools, leaflet, jsonlite, rjson, syuzhet, reticulate, glue, tm)
+import("pickle")
+import("keras")
+import("numpy")
+
+assignInNamespace("cedta.override", c(data.table:::cedta.override,"rmarkdown"), "data.table")
+
+opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+review<-fread("/Users/11kolop/Desktop/Final Submission/rev")
+
+
+```
+
+```{r read_data, include=FALSE}
+tokens <- readRDS("/Users/11kolop/Desktop/Final Submission/tokens.RData")
+bitokens <- readRDS("/Users/11kolop/Desktop/Final Submission/bigrams.RData")
+br<-readRDS("/Users/11kolop/Desktop/Final Submission/business_restaurants")
+
+tokens$Target <- ifelse(tokens$stars > 3, "Positive", "Negative")
+bitokens$Target <- ifelse(bitokens$stars > 3, "Positive", "Negative")
+```
+
+
+```{r constant}
+cities <- names(sort(table(tokens$city), decreasing = TRUE))
+```
+
+```{r functions}
+##https://www.cnn.com/travel/article/world-best-food-cultures/index.html
+us.type<-grepl("United States|American", br$categories)
+us<-br[us.type,]
+us$categories<-"American"
+mex.type<-grepl("Mexico|Mexican", br$categories)
+mex<-br[mex.type,]
+mex$categories<-"Mexican"
+
+thai.type<-grepl("Thailand|Thai", br$categories)
+thai<-br[thai.type,]
+thai$categories<-"Thai"
+
+gre.type<-grepl("Greece|Greek", br$categories)
+gre<-br[gre.type,] 
+gre$categories<-"Greece"
+
+indi.type<-grepl("India|Indian", br$categories)
+indi<-br[indi.type,] 
+indi$categories<-"Indian"
+
+jp.type<-grepl("Japan|Japanese", br$categories)
+jp<-br[jp.type,] 
+jp$categories<-"Japanese"
+
+spain.type<-grepl("Spain|Spanish", br$categorie)
+sp<-br[spain.type,]
+sp$categories<-"Spanish"
+
+fr.type<-grepl("France|French", br$categorie)
+fr<-br[fr.type,]
+fr$categories<-"French"
+
+cn.type<-grepl("China|Chinese", br$categorie)
+cn<-br[cn.type,]
+cn$categories<-"Chinese"
+
+it.type<-grepl("Italy|Italian", br$categorie)
+it<-br[it.type,]
+it$categories<-"Italian"
+
+ca.type<-grepl("Caribbean", br$categorie)
+ca<-br[ca.type,]
+ca$categories<-"Caribbean"
+
+med.type<-grepl("Mediterranean", br$categorie)
+med<-br[med.type,]
+med$categories<-"Mediterranean"
+
+vt.type<-grepl("Vietnamese", br$categories)
+vt<-br[vt.type,]
+vt$categories<-"Vietnamese"
+
+rest<-data.table(rbind(us,mex,thai,gre,indi,jp,sp,fr,cn,it,ca,med,vt))
+setorderv(rest, cols = "stars", order = -1) 
+```
+
+```{r constants}
+state.name<-"state"
+stars.name<-"stars"
+city.name<-"city"
+category.name<-"categories"
+unique.state <- rest[, unique(get(state.name))]
+#unique.city <- rest[, unique(get(city.name))]
+unique.city <-names(sort(table(rest$city), decreasing = T))
+unique.type <- rest[, unique(get(category.name ))]
+```
+
+
+
+Clustering Map
+=====================================  
+
+
+Row {data-height=800}
+-------------------------------------
+
+```{r,fig.height=10, fig.width=19}
+
+br %>% 
+  leaflet() %>% 
+  addTiles() %>%
+  addCircleMarkers(radius = 2, label = ~htmlEscape(`name`),
+                         clusterOptions = markerClusterOptions()) 
+
+```
+
+Star Rating Distribution
+===================================
+
+
+Row {data-height=500,.bgred}
+-------------------------------------
+
+```{r respondents}
+inputPanel(
+  
+  selectInput(inputId="city", label = "Select City:", choices = unique.city, selected = unique.city[1]),
+  selectInput(inputId="category", label = "Select Category:", choices = unique.type, selected = unique.type[1]),
+  
+  checkboxInput(inputId = "product_info_decreasing2", label = "Sorted", value=TRUE),
+  checkboxInput(inputId = "product_info_show_percentages2", label = "Show Percentages", 
+                value = TRUE),
+  sliderInput(inputId = "product_info_names_magnification2", label = "Magnify Star Names",
+              min = 0.4, max = 1.4, value = 1, step = 0.1)
+)
+
+
+renderPlot({
+
+  count<-rest[get(category.name)%in%input$category& get(city.name)%in%input$city, .N, by=stars]
+   rates<-count[, star.rates := 100 * N/sum(N)]
+   
+
+   
+  if(input$product_info_decreasing2 == TRUE){
+    setorderv(x = rates, cols = "star.rates", order = -1)
+  }  
+  barplot(height = rates[, star.rates], 
+          names.arg = rates[, get(stars.name)], 
+          space=0.01, las = 1, main = input$category, 
+          ylab = "Star Rating Percentage", 
+          cex.names = input$product_info_names_magnification2, 
+          ylim = c(-15, 100), xaxt = "n", axes = F, col = "red2")
+  axis(side = 2, at = 20*(0:5), las = 2)
+  
+  text(x = -0.5 + 1.02*1:rates[, .N], y = -5, 
+       labels = rates[, get(stars.name)], srt = 45, 
+       cex = input$product_info_names_magnification2, pos = 2)
+  
+  if(input$product_info_show_percentages2 == TRUE){
+    space_val = 0
+    text(x = -0.4 + 1:rates[, .N] * (1+space_val), 
+         y = rates[, star.rates], 
+         labels = sprintf("%.2f%%", rates[, star.rates]), pos = 3)
+  }
+})
+```
+
+Top Restaurants
+=====================================  
+
+
+
+Row {data-height=800}
+-------------------------------------
+```{r,}
+inputPanel(
+  
+  selectInput(inputId="city.top", label = "Select City:", choices = unique.city, selected = unique.city[1]),
+  selectInput(inputId="category.top", label = "Select Category:", choices = unique.type, selected = unique.type[1]),
+  checkboxInput(inputId = "review.top", label = "Sort by Reviews", value = FALSE),
+  sliderInput(inputId = "product_info_number.top", label = "Show Top Restaurant", 
+              min = 0, max = 20, value = 20, step = 1)
+)
+
+renderTable({
+  options = list(autoWidth = FALSE)
+  rest.top<-rest
+  rest.top<-rest.top[with(rest.top, order(-stars,-review_count))]
+  w<-rest.top[get(city.name)%in%input$city.top &get(category.name)%in%input$category.top][1:input$product_info_number.top]
+  if (input$review.top == TRUE){
+    setorderv(w, cols = "review_count", order = -1)
+  }
+  data.table(w[,c("name","address", "city","state","postal_code","stars","review_count")])
+
+})
+```
+
+
+
+
+Wordcloud
+============
+
+```{r cloud}
+inputPanel(
+    selectInput(inputId = "cloud_city", label = "Choose City", choices = cities, selected = cities[1], multiple = TRUE),
+    selectInput(inputId = "cloud_stars", label = "Number of Stars", choices = c(1:5), selected = c(1:5), multiple = TRUE),
+    sliderInput(inputId = "cloud_num", label = "Number of Words", min = 1, max = 300, value = 100, step = 1),
+    textInput(inputId = "cloud_text", label = "Input Categories")
+)
+
+renderPlot({
+  cloud_counts <- tokens[grepl(input$cloud_text, tokens$categories)]
+
+  cloud_counts <- cloud_counts[city %in% input$cloud_city & stars %in% input$cloud_stars]
+  cloud_counts <- cloud_counts %>% 
+  count(word, sort = TRUE) %>% 
+  top_n(input$cloud_num, n)
+  
+  wordcloud(cloud_counts$word, cloud_counts$n, random.order = FALSE, colors = RColorBrewer::brewer.pal(8,"Dark2"), scale = c(8, 0.3))
+})
+```
+
+
+
+Frequency of the Words
+=========
+
+Row {data-height=100}
+-------------------------------------
+
+```{r warning = FALSE}
+inputPanel(
+    selectInput(inputId = "freq_city", label = "Choose City", choices = cities, selected = cities[1], multiple = TRUE),
+    selectInput(inputId = "freq_stars", label = "Number of Stars", choices = c(1:5), selected = c(1:5), multiple = TRUE)
+)
+
+renderPlot({
+  freq_counts <- tokens[city %in% input$freq_city & stars %in% input$freq_stars]
+  freq_counts %>% 
+  group_by(Target) %>% 
+  count(word, sort = TRUE) %>% 
+  left_join(tokens %>% 
+              group_by(Target) %>% 
+              summarise(total = n()), by = "Target") %>%
+  mutate(freq = n/total) %>% 
+  select(Target, word, freq) %>% 
+  spread(Target, freq) %>%
+  arrange(`Positive`, `Negative`) %>% 
+  ggplot(aes(`Positive`, `Negative`)) +
+  geom_jitter(alpha = 0.05, size = 0.5, width = 0.25, height = 0.25) +
+  geom_abline(color = "red") +
+  geom_text(aes(label = word), check_overlap = TRUE) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  labs(x = "Positive", y = "Negative") +
+  theme_minimal()
+})
+```
+
+
+Bigram WordCloud
+=====================================
+
+```{r}
+inputPanel(
+    selectInput(inputId = "bi_city", label = "Choose City", choices = cities, selected = cities[1], multiple = TRUE),
+    selectInput(inputId = "bi_stars", label = "Number of Stars", choices = c(1:5), selected = c(1:5), multiple = TRUE),
+    sliderInput(inputId = "bi_num", label = "Number of Words", min = 1, max = 300, value = 100, step = 1),
+    textInput(inputId = "bi_text", label = "Input Categories")
+)
+
+renderPlot({
+  bi_counts <- bitokens[grepl(input$bi_text, bitokens$categories)]
+
+  bi_counts <- bi_counts[city %in% input$bi_city & stars %in% input$bi_stars]
+  bi_counts <- bi_counts %>% 
+  count(bigram, sort = TRUE) %>% 
+  top_n(input$bi_num, n)
+  
+  wordcloud(bi_counts$bigram, bi_counts$n, random.order = FALSE, colors = RColorBrewer::brewer.pal(8,"Dark2"), scale = c(7, 0.3))
+})
+```
+
+
+Bigram Frequency
+===================
+
+Row {data-height=100}
+-------------------------------------
+
+```{r warning = FALSE}
+inputPanel(
+    selectInput(inputId = "freqbi_city", label = "Choose City", choices = cities, selected = cities[1], multiple = TRUE),
+    selectInput(inputId = "freqbi_stars", label = "Number of Stars", choices = c(1:5), selected = c(1:5), multiple = TRUE)
+)
+
+renderPlot({
+  freqbi_counts <- bitokens[city %in% input$freqbi_city & stars %in% input$freqbi_stars]
+  freqbi_counts %>% 
+  group_by(Target) %>% 
+  count(bigram, sort = TRUE) %>% 
+  left_join(bitokens %>% 
+              group_by(Target) %>% 
+              summarise(total = n()), by = "Target") %>%
+  mutate(freq = n/total) %>% 
+  select(Target, bigram, freq) %>% 
+  spread(Target, freq) %>%
+  arrange(`Positive`, `Negative`) %>% 
+  ggplot(aes(`Positive`, `Negative`)) +
+  geom_jitter(alpha = 0.05, size = 0.5, width = 0.25, height = 0.25) +
+  geom_abline(color = "red") +
+  geom_text(aes(label = bigram), check_overlap = TRUE) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  labs(x = "Positive", y = "Negative") +
+  theme_minimal()
+})
+```
+
+Sentiment Analysis
+=====================================  
+
+Row {data-height=500}
+-------------------------------------
+
+```{r}
+inputPanel(
+  selectInput(inputId="SS", label = " Star Level", choices = c(1:5), selected = c(1:5)[1]))
+
+
+renderPlot({
+mydata <- Corpus(VectorSource(review[review$stars==input$SS,]$text))
+mydata <- tm_map(mydata, content_transformer(tolower))
+removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*", "", x)
+mydata <- tm_map(mydata, content_transformer(removeNumPunct))
+mydata <- tm_map(mydata, removeWords, stopwords("english"))
+mydata <- tm_map(mydata, stripWhitespace)
+mydata <- tm_map(mydata, removeNumbers)
+mydata <- tm_map(mydata, removePunctuation)
+
+d<-get_nrc_sentiment(as.character(mydata))
+td<-data.frame(t(d))
+td_new <- data.frame(rowSums(td))
+names(td_new)[1] <- "count"
+td_new <- cbind("sentiment" = rownames(td_new), td_new)
+rownames(td_new) <- NULL
+qplot(sentiment, data=td_new[1:7,], weight=count, geom="bar",fill=sentiment)+ggtitle("Sentiments")
+})
+```
+
+
+Review Prediction
+===================================
+
+
+Row {data-height=500}
+-------------------------------------
+
+```{r}
+textAreaInput("text", label = h3("Place Review Here"), width = '1500px', height = '300px')
+actionButton("submit", "Submit")
+v <- reactiveValues()
+renderUI(v[["py_chunk"]])
+observeEvent(
+  input$submit,
+  {
+    var <- input$text
+py_code <- c(
+       "```{python, echo=F}",
+      "import pickle",
+      "from keras.models import load_model",
+      "from keras.preprocessing.sequence import pad_sequences",
+      "from keras.preprocessing.text import Tokenizer",
+      "import numpy as np",
+      "revi = str(r.var)",
+      "model = load_model('/Users/11kolop/Desktop/Final Submission/my_model.h5')",
+      "with open('/Users/11kolop/Desktop/Final Submission/tokenizer.pickle', 'rb') as handle:
+      tokenizer = pickle.load(handle)",
+      "revi = np.expand_dims(revi, axis=0)",
+      "revi = tokenizer.texts_to_sequences(revi)",
+      "revi = pad_sequences(revi,maxlen=200)",
+      "revi = model.predict([revi], batch_size=1, verbose = 0).argmax()+1",
+      "print(revi)",
+      "```"
+    )
+    v[["py_chunk"]] <-HTML(knit(text = py_code))})
+```
+

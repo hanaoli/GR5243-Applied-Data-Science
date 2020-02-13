@@ -1,0 +1,578 @@
+---
+title: "ADS Final Report"
+author: "Peter Kolodziej, Tianyi Li, Hanao Li, Fanyi Yang"
+date: "5/5/2019"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r libraries,warning=FALSE}
+if(!require("pacman")) install.packages("pacman")
+p_load(wordcloud, ggraph, igraph, Rmisc, scales, tidytext, text2vec,RColorBrewer,stopwords, Matrix, tokenizers, knitr, keras, tensorflow, magrittr, tidyverse, caret, flexdashboard, shiny, rmarkdown, Hmisc, DT, data.table, viridis, leaflet.extras, htmltools, leaflet, jsonlite, rjson, syuzhet, reticulate, glue, ggpubr,tm,SnowballC,stringi,slam,quanteda,ggplot2,ggmap,ggpubr,glmnet,nnet,scales,dplyr,EBImage,parallel,purrr,neuralnet,xgboost,randomForest,MASS,class,rpart,e1071,gbm,tidyverse,broom,caret,stringr,gridExtra,cowplot,magick)
+```
+
+```{r data}
+set.seed(0)
+business<-readRDS("/Users/11kolop/Desktop/Final Submission/business_restaurants")
+review<-readRDS("/Users/11kolop/Desktop/Final Submission/review_restaurants (1)")
+
+```
+
+## Introduction
+
+Yelp, founded in 2004, publishes crowd-sources reviews about businesses (Wikipedia), helping people locate local restaurants based on star-rating and reviews. As more and more customers rely on Yelp for food hunting, the review on Yelp has become a critical index for restaurants.
+
+In this project, we focused on the analysis of the text reviews and star prediction. We are interested in this topic for two reasons. First of all, rating acts as an identifier for discriminating positive or negative sentiment, which is an interesting feature that directly ties to business quality. Second, rating is intangible, and thus difficult to quantify in an exact way. Therefore, building a model to predict rating accurately based on comments would be useful. With such a model, we can access unlabeled text. For example, we can look at unlabeled reviews and assign score to it. The predictive model may also enable us to monitor the social presence of a business on social media and other communication venues. An important feature of this model is that it can be used to address the misclassification of reviews. Whenever people write a really negative reviews, and submitted it, and mistakenly put a five star on it, the model can identify such error and fix it. In that way, our model functions as a fake review filter that can improve the efficiency of Yelp’s rating.
+
+## Source Data
+
+The dataset was downloaded from the Yelp Dataset Challenge, consisting of five files, including yelp_user, yelp_review, yelp_checkin, yelp_tip and yelp_business, in json format. For our analysis, we focused on rating and reviews for restaurants and used the customer reviews and business attributes data. We extracted restaurants from all business, and there werenearly 5,000,000 customer reviews collected from approximately 75,000 restaurants.
+
+Business data is about75,000 observations, with 58 variables like business id, business name, cities, state, zip code, attributes like the environment of the restaurants (the presence of wifi, parking lots or not etc.), rating, review counts and etc. The review data set is larger, which is of 2GB text review data. Attributes in review data include 9 variables, such as business id, star rating, review content and people’s opinion on reviews (funny, cool and useful) and etc. 
+
+## Examination
+
+In this section, we will investigate the distribution of the business and review data. First we will look at the distribution of stars for the review dataset. We will then define reviews with one to three stars as negative reviews and reviews with four and five stars as positive reviews.We will check the distribution of stars and groups  Positive or Negative) for each group using 1% of the data. Then, we will use natural language processing for our sample dataset. We tokenized the words into unigram and bigram tokens, and then removed stop words and punctuations. We will check the most frequent words used in each group and created a 2-d frequency graph to visualze these words. Wordclouds for unigram and bigrams and bigram network graph can also be plotted to see the relationship between the words used in the reviews, although they provide duplicated information and so will not be used in the report. Please see the Reporting Engine for this information.
+
+```{r, warning=FALSE}
+register_google(key="AIzaSyDMniPT3Ks1qsRoD9nnWbedTv0VYHP0ZPQ")
+ggmap(get_googlemap(center=c(lon=mean(business$longitude),lat=mean(business$latitude)),zoom=4, scale=2,maptype ='hybrid',color = 'color')) +   
+     geom_point(aes(x = longitude, y = latitude), colour = "purple", data = business, alpha=0.5, size = .5) 
+data.table(sort(table(business$city),decreasing = T)[1:10])
+```
+Next, we want to investigate how the restaurants cluster on the map. By using the leaflet and ggmap packages, based on the restaurants' distances and at a given zoom level, we can see how the restaurants cluster in each specific area and we also can see restaurants name on the map. From our shiny app initial clustering map, there are five primary clusters: one in the west coast of United States, one in the east coast of United States, one in the cities which contain the most business data. The top ten are displayed.
+
+In our Reporting Engine we want to investigate the business level of each cuisine type by showing restaurants' star rating distribution of each type of cuisine in a specific city. What we built in the shiny app was the selection of city sorted by  the number of restaurants they have and the thirteen types of cuisine. There are two check boxes, one is whether the star rating is in sorted order and another one is whether the star rating is showing percentage values. When we select one specific city, it will show what percent of each star rating of the cuisine we select in that city. For example, when we choose Las Vegas with French cuisine, we can see in Las Vegas, there is 38.36 percent of French cuisine is 4.5-star, and 2.74 percent of French cuisine is 5-star. From the star rating distribution, we can conclude 4-star and 4.5-star rating restaurants dominate the French restaurant's business in Las Vegas.
+
+```{r}
+df <- data.frame(
+  stars = c("1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"),
+  rated.number = c(543, 1553, 4218, 7431, 12896, 17131, 17840, 10021, 2967)
+  )
+bp <- ggplot(df, aes(x="", y=rated.number, fill=stars))+ geom_bar(width = 1, stat = "identity")
+pie <- bp + coord_polar("y", start=0)
+
+
+df.review <- data.frame(
+  stars = c("1", "2", "3", "4", "5"),
+  rated.number = c(544186, 420640, 640373, 1191120, 1820145)
+  )
+bp.review <- ggplot(df.review, aes(x="", y=rated.number, fill=stars))+ geom_bar(width = 1, stat = "identity")
+pie.review <- bp.review + coord_polar("y", start=0)
+
+grid.arrange(pie, pie.review, ncol = 2)
+
+```
+
+
+Now, we look at the business ratings and individual reviews, and the distribution is different. In business ratings, 3.5 and 4 stars are the most dominant, while for individual users, they tend to rate restaurants as 4 or 5 stars more often. The average individual rating is higher than the average business stars. Part of the reason may be that in business data, rating can have half scores, while in individual data, scores can only be whole numbers, and customers tend to rated a businee higher in such integer setting. However, such difference is how the rating of business works: individuals' low scores, such as 1 and 2s, averaged out the 4 and 5s, and thus lowered the overall industry mean to 3s and 4s.
+
+```{r}
+ggplot(business, aes(x = review_count, y = stars)) + geom_point()
+```
+
+Next, we investigated the relationship between number of reviews a restaurant received and its rating on the Yelp. The scatterplot shows no clear pattern that indicates a positive or negative relationship between review counts and star rating. However, there are a great amount of reviews clustered around 3 and 4 stars restaurants. In addition, for restaurants that have extremely high review counts, they are generally 3 or 4 stars’ restaurants. 
+
+```{r}
+rev1 <- review[review$cool != 0, ]
+rev2 <- review[review$useful != 0, ]
+rev3 <- review[review$funny != 0, ]
+
+rev1$att <- "Cool"
+rev2$att <- "Useful"
+rev3$att <- "Funny"
+
+rev <- rbind(rev1, rev2, rev3)
+rev$stars <- as.factor(rev$stars)
+rev$att <- as.factor(rev$att)
+ggplot(data = rev, aes(x = stars, fill = att)) + geom_bar(position = "dodge")
+```
+
+When we examine the review attributes, we found that positive reviews are more useful than negative reviews, because there is more usefulness as rating increases. Beyond that, people find that reviews for higher rating restaurants are cooler, but they think all reviews are of the same level of funny. 
+
+```{r}
+us.type<-grepl("United States|American", business$categories)
+us<-business[us.type,]
+us$categories<-"American"
+
+mex.type<-grepl("Mexico|Mexican", business$categories)
+mex<-business[mex.type,]
+mex$categories<-"Mexican"
+
+thai.type<-grepl("Thailand|Thai", business$categories)
+thai<-business[thai.type,]
+thai$categories<-"Thai"
+
+gre.type<-grepl("Greece|Greek", business$categories)
+gre<-business[gre.type,] 
+gre$categories<-"Greece"
+
+indi.type<-grepl("India|Indian", business$categories)
+indi<-business[indi.type,] 
+indi$categories<-"Indian"
+
+jp.type<-grepl("Japan|Japanese", business$categories)
+jp<-business[jp.type,] 
+jp$categories<-"Japanese"
+
+spain.type<-grepl("Spain|Spanish", business$categorie)
+sp<-business[spain.type,]
+sp$categories<-"Spanish"
+
+fr.type<-grepl("France|French", business$categorie)
+fr<-business[fr.type,]
+fr$categories<-"French"
+
+cn.type<-grepl("China|Chinese", business$categorie)
+cn<-business[cn.type,]
+cn$categories<-"Chinese"
+
+it.type<-grepl("Italy|Italian", business$categorie)
+it<-business[it.type,]
+it$categories<-"Italian"
+
+ca.type<-grepl("Caribbean", business$categorie)
+ca<-business[ca.type,]
+ca$categories<-"Caribbean"
+
+med.type<-grepl("Mediterranean", business$categorie)
+med<-business[med.type,]
+med$categories<-"Mediterranean"
+
+vt.type<-grepl("Vietnamese", business$categories)
+vt<-business[vt.type,]
+vt$categories<-"Vietnamese"
+
+rest<-data.table(rbind(us,mex,thai,gre,indi,jp,sp,fr,cn,it,ca,med,vt))
+```
+
+```{r}
+dat.categories <- rest[, .N, by = categories]
+bp.categories2 <- ggplot(dat.categories, aes(x=categories, y=N, fill=categories))+ geom_bar(width = 1, stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust =1))
+bp.categories2
+```
+
+After reviewing the restaurants' data, we decide to find each restaurants' categories by their cuisine type. To do that, we conducted research from the CNN and BBC published articles, and find that there are thirteen most popular cuisine types, generally speaking. After we use regular expressions to grep each cuisine name in the restaurants' dataset, some of them are under several cuisine types, and so the categories were named separately into several rows and concatenated with the rest of dataset. 
+Finally, we want to investigate the top restaurants of each cuisine type in one specific city. Our top restaurants' recommendation is based on our business restaurant dataset's star rating and the amount of review. By selecting the particular city with one cuisine category, we slide the slider bar to display the number of top restaurants with their information, such as name, address, city, state, stars, review counts. 
+
+All of this information can additionally be found within the Reporting Engine.
+
+
+```{r}
+sub_business <- business[,c("city", "business_id", "categories")]
+review %>% 
+  ggplot(aes(factor(stars))) + 
+  geom_bar(fill = "steelblue") + 
+  geom_text(stat = "count", aes(label=..count..), vjust = 1.6, color = "white", size=3.5) +
+  xlab("target") + 
+  theme_minimal()
+```
+
+Here we can see the distribution of review ratings grouped by stars. The most important thing to note is the majority of Fours and Fives within the set. There is also a significant number of Ones. However Twos and Threes are underrepresented in this dataset.
+```{r}
+review$Target <- ifelse(review$stars > 3, "Positive", "Negative")
+newdata <- review[,c(1, 3, 8, 10)]
+newdata$Target <- as.factor(newdata$Target)
+invisible(gc())
+newdata %>% 
+  ggplot(aes(factor(Target))) + 
+  geom_bar(fill = "steelblue") + 
+  geom_text(stat = "count", aes(label=..count..), vjust = 1.6, color = "white", size=3.5) +
+  xlab("target") + 
+  theme_minimal()
+
+```
+
+Here you can see the distribution of positive to negative reviews, concentrated only on restaurant reviews. As before, there are more positive than negative reviews.
+
+```{r}
+alldata <- newdata[sample(1:nrow(newdata), 0.01 * nrow(newdata), replace = FALSE), ]
+rm(newdata)
+invisible(gc())
+alldata %>% 
+  ggplot(aes(factor(Target))) + 
+  geom_bar(fill = "steelblue") + 
+  geom_text(stat = "count", aes(label=..count..), vjust = 1.6, color = "white", size=3.5) +
+  xlab("target") + 
+  theme_minimal()
+
+```
+
+Here is a 1% sample of the restaurant reviews dataset. This subsampling is done to facilitate other operations within the report. Clearly the distribution of reviews has been largely unaffected by the subsampling.
+
+```{r}
+m_alldata <- merge(sub_business, alldata, "business_id")
+
+tokens <- m_alldata %>%
+  mutate(text = str_replace_all(text, "[^[:alpha:][:space:]]+", "")) %>%  
+  unnest_tokens(word, text)
+
+temp <- tokens %>% 
+  dplyr::count(word, sort = TRUE) %>%
+  top_n(10, n)
+setDT(temp)
+datatable(temp)
+```
+
+The data has been initially tokenized. Clearly more work needs to be done. These words contain no information with regards to the content of the review. More preprocessing is required.
+
+```{r}
+tokens %<>%
+  anti_join(stop_words, by = "word")
+
+temp <- tokens %>% 
+  dplyr::count(word, sort = TRUE) %>%
+  top_n(10, n)
+setDT(temp)
+datatable(temp)
+
+```
+
+Now common stopwords have been removed. We are getting closer to the important information contained in the reviews.
+
+```{r}
+scale_x_reordered <- function(..., sep = "___") {
+  reg <- paste0(sep, ".+$")
+  ggplot2::scale_x_discrete(labels = function(x) gsub(reg, "", x), ...)
+}
+
+reorder_within <- function(x, by, within, fun = mean, sep = "___", ...) {
+  new_x <- paste(x, within, sep = sep)
+  stats::reorder(new_x, by, FUN = fun)
+}
+```
+
+```{r,warning=FALSE}
+tokens %>% 
+  group_by(Target) %>% 
+  dplyr::count(word, sort = TRUE) %>% 
+  left_join(tokens %>% 
+              group_by(Target) %>% 
+              dplyr::summarise(total = dplyr::n()), by = "Target") %>%
+  mutate(freq = n/total) %>% 
+  dplyr::select(Target, word, freq) %>% 
+  spread(Target, freq) %>%
+  arrange(`Positive`, `Negative`) %>% 
+  ggplot(aes(`Positive`, `Negative`)) +
+  geom_jitter(alpha = 0.05, size = 0.5, width = 0.25, height = 0.25) +
+  geom_abline(color = "red") +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  labs(x = "Positive", y = "Negative") +
+  theme_minimal()
+
+```
+
+Here we can see words which occur most frequently in both positive and negative reviews. Words closest to the red line appear equally in positive and negative reviews, while words farthest from the red line appear primarily in positive and negative reviews.
+
+
+```{r}
+bigrams <- m_alldata %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2)
+
+bigrams %<>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% stop_words$word,
+         !word2 %in% stop_words$word,
+         !str_detect(word1, "[[:digit:]]"),
+         !str_detect(word2, "[[:digit:]]")) %>% 
+  unite(bigram, word1, word2, sep = " ")
+
+
+temp <- bigrams %>% 
+  dplyr::count(bigram, sort = TRUE) %>%
+  top_n(10, n)
+setDT(temp)
+datatable(temp)
+
+```
+
+Here are some bigrams after removing stopwords. Note that by using n-grams we can begin to estimate the sequential relationships between words in a review. This will be explored further in the modeling section of the report.
+
+```{r}
+bigrams %>% 
+  dplyr::select(bigram, Target) %>% 
+  group_by(Target) %>% 
+ dplyr:: count(bigram, sort = TRUE) %>%
+  top_n(35, n) %>% 
+  ungroup() %>% 
+  ggplot(aes(reorder_within(bigram, n, Target), n)) +
+  geom_col(fill = "steelblue") +
+  scale_x_reordered() +
+  labs(x = "", y = "") +
+  coord_flip() +
+  theme_minimal() +
+  facet_wrap(~ Target, ncol = 2, scales = "free")
+
+```
+
+Again, here are bi-gram tokens which occur most frequently in Positive and Negative reviews. There is intuitive meaning behind these words, as the positive column clearly contains words we naturally associate with positivity. The same is true for the negative column.
+
+```{r,warning=FALSE}
+bigrams %>% 
+  group_by(Target) %>% 
+  dplyr::count(bigram, sort = TRUE) %>% 
+  left_join(bigrams %>% 
+              group_by(Target) %>% 
+              dplyr::summarise(total = dplyr::n()), by = "Target") %>%
+  mutate(freq = n/total) %>% 
+  dplyr::select(Target, bigram, freq) %>% 
+  spread(Target, freq) %>%
+  arrange(`Positive`, `Negative`) %>% 
+  ggplot(aes(`Positive`, `Negative`)) +
+  geom_jitter(alpha = 0.05, size = 0.5, width = 0.25, height = 0.25) +
+  geom_abline(color = "red") +
+  geom_text(aes(label = bigram), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  labs(x = "Positive", y = "Negative") +
+  theme_minimal()
+
+
+```
+
+
+```{r}
+p1 <- bigrams %>% 
+  filter(Target == "Positive") %>% 
+  separate(bigram, c("word1", "word2"), sep = " ") %>% 
+  dplyr::count(word1, word2, sort = TRUE) %>% 
+  filter(n > 150) %>%
+  graph_from_data_frame() %>% 
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = 0.8), show.legend = FALSE) +
+  geom_node_point(color = "lightblue", size = 2.5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1, size = 2.4) + 
+  labs(x = "", y = "") +
+  ggtitle("Positive") +
+  theme_minimal()
+
+p2 <- bigrams %>% 
+  filter(Target == "Negative") %>% 
+  separate(bigram, c("word1", "word2"), sep = " ") %>% 
+  dplyr::count(word1, word2, sort = TRUE) %>% 
+  filter(n > 80) %>%
+  graph_from_data_frame() %>% 
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = 0.8), show.legend = FALSE) +
+  geom_node_point(color = "lightblue", size = 2.5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1, size = 2.4) + 
+  labs(x = "", y = "") +
+  ggtitle("Negative") +
+  theme_minimal()
+
+multiplot(p1, p2, cols = 2)
+
+```
+
+Here are network graphs which display common bigram connections between both positive and negative terms. Similar conclusions can be drawn from this graph, as it also displays partially sequential information regarding the reviews.
+
+```{python}
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+plt.style.use('ggplot')
+import seaborn as sns
+from scipy import sparse
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score
+from sklearn import metrics
+from sklearn.metrics import roc_auc_score
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+from keras.layers import Dense, Input, LSTM, Embedding, Dropout, Activation, SpatialDropout1D, GRU
+from keras.layers import Bidirectional, GlobalAveragePooling1D, GlobalMaxPooling1D, concatenate
+from keras.models import Model
+from keras import initializers, regularizers, constraints, optimizers, layers
+from keras.utils import to_categorical
+from keras.callbacks import EarlyStopping, ModelCheckpoint
+from scipy import sparse
+```
+
+```{python,echo = FALSE,results='hide',warning=FALSE}
+business = pd.read_csv('/Users/11kolop/Desktop/Final Submission/business.csv')
+review_all = pd.read_csv('/Users/11kolop/Desktop/Final Submission/review.csv')
+```
+
+```{python,echo = FALSE,results='hide',warning=FALSE}
+a = business[business['categories'].str.contains('Restaurant') == True]
+b = business[business['city']=='Las Vegas']
+rev = review_all[review_all.business_id.isin(a['business_id']) == True]
+rev1 = rev[rev.business_id.isin(b['business_id'])==True]
+test = rev1.sample(frac=0.20,random_state=42)
+train = rev1.drop(test.index)
+train = train[['text', 'stars']]
+train = pd.get_dummies(train, columns = ['stars'])
+test = test[['text', 'stars']]
+test = pd.get_dummies(test, columns = ['stars'])
+train_samp = train.sample(frac = .1, random_state = 42)
+test_samp = test.sample(frac = .1, random_state = 42)
+```
+
+```{python,echo = FALSE,results='hide',warning=FALSE}
+embed_size = 200 
+max_features = 20000
+maxlen = 200
+embedding_file = '/Users/11kolop/Desktop/Final Submission/glove.twitter.27B/glove.twitter.27B.200d.txt'
+def get_coefs(word,*arr): return word, np.asarray(arr, dtype='float32')
+embeddings_index = dict(get_coefs(*o.strip().split()) for o in open(embedding_file))
+class_names = ['stars_1', 'stars_2', 'stars_3', 'stars_4', 'stars_5']
+y = train_samp[class_names].values
+tokenizer = Tokenizer(num_words=max_features)
+tokenizer.fit_on_texts(list(train_samp['text'].values))
+X_train = tokenizer.texts_to_sequences(train_samp['text'].values)
+X_test = tokenizer.texts_to_sequences(test_samp['text'].values)
+x_train = pad_sequences(X_train, maxlen = maxlen)
+x_test = pad_sequences(X_test, maxlen = maxlen)
+word_index = tokenizer.word_index
+nb_words = min(max_features, len(word_index))
+embedding_matrix = np.zeros((nb_words, embed_size))
+```
+
+
+```{python,echo = FALSE,results='hide',warning=FALSE}
+def plot_history(history):
+    acc = history.history['acc']
+    val_acc = history.history['val_acc']
+    loss = history.history['loss']
+    val_loss = history.history['val_loss']
+    x = range(1, len(acc) + 1)
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(x, acc, 'b', label='Training auc')
+    plt.plot(x, val_acc, 'r', label='Validation auc')
+    plt.title('Training and validation ACC')
+    plt.legend()
+    plt.subplot(1, 2, 2)
+    plt.plot(x, loss, 'b', label='Training loss')
+    plt.plot(x, val_loss, 'r', label='Validation loss')
+    plt.title('Training and validation loss')
+    plt.legend()
+```
+
+## Investigations
+
+To answer the question of whether a business stars can be predicted to a satisfactory level of accuracy, we investigated several models. The final model will be explored in detail, and the unsuccessful attempts will be summarized in the coming paragraphs.
+
+First, a predictive model was fit based on business attributes. Given the size and diversity of review data, it seemed at first desirable to fit a model based on simple features. The chosen attributes are displayed in the business data table at the head of the report. They include categorical variables, such as price range and ambience. They also include binary variables like delivery and wi-fi availability. 
+
+There were two problems with this approach. First, because the original dataset was stored in JSON files, many variables were still nested within the characteristic JSON brackets. These needed to be manually extracted using regular expression functions. Second, the distribution of these attributes made them uniquely unsuitable for modeling purposes. There were varying categorical levels with similar meanings, such as “no”, ”NO”, and “ “. Again, this needed to be manually remedied. Second, the levels of missingness far exceeded levels appropriate for missing data imputation. This is possibly due to the mixed nature of the dataset. For example, a hair salon will never have a liquor license or offer delivery. However, even after filtering the dataset down to only restaurants, the levels of missingness were still exceedingly high. To solve this problem, an additional factor was added to every variable to connote missing information.
+
+After all of this, a Naïve Bayes Classifier was fit on the data, which only achieved a 47% accuracy. We concluded that due to the incomplete nature of the data, a different approach was necessary.
+
+Next, we turned to the reviews dataset. Due to the size of the dataset (~5,000,00 reviews) sub-sampling was necessary to reduce training size. We also deemed it wise to restrict our training and test sets to restaurants. This will simplify the information contained in the reviews by reducing the complexity of the vocabulary. This is a limitation, however it can be removed whenever this issue is revisited with more computing power. To sub-sample our data, we imposed the restaurant restriction, and additionally only sampled restaurants from Las Vegas. This will be explored in more detail in the limitations section. From this subset of the data, we drew ten percent to serve as our training and test set.
+
+The next step is the pre-processing of the text data. This will be explained briefly, as there could be many reports which only focus on these steps. First, it is necessary to convert our text to vector representation. There are various methods for dealing with this, but for simplicity we opt to use Stanford NLP’s Global Vectors for Word Representation. According to their website  “GloVe is an unsupervised learning algorithm for obtaining vector representations for words”.
+This is useful for two reasons. First, it expresses text in a lower dimension than the number of unique words. Second, through these representations word similiarity can be assessed. 
+
+Our text was first converted to vector form, with a maximum unique word count of 20,000. These will be the features of our training set. Then, each review was expressed as a sequence of values, with each value corresponding to a unique word. Then, reviews shorter than 200 words were “padded” with zeroes, to ensure uniformity of all observations. 
+
+Three models were explored when fitting the model on text data . The results will be shown for our superior model, but I will explain all three. First, we attempted once again to fit a naïve Bayes classifier. However, since the ability of this classifier to utilize sequential data is incomplete at best, single words were considered as inputs. This model achieved an accuracy of 17%, which amounts to worse than a random guess. This model will not be explored further. Next we attempted to implement a Support Vector Classifier with similar inputs. This model achieved an accuracy of 58%, which is certainly an improvement. While acceptable, we still desired to utilize the information contained within the sequential portion of the data.
+
+To do so, we utilized a shallow Recurrent Neural Network. RNN’s are well suited to the task of text classification, as they take a sequence of variables as an input. As such, they are able to incorporate past details in every prediction. The first layer of our Neural Network used the afore-mentioned GloVe embedding to transform the sequences of text. Next, we used a dropout layer of 50% to combat overfitting. Then we utilized a Long Short Term Memory layer followed by a Gated Recurrent Unit layer. These are currently the most popular recurrent neural network mechanisms in the field of natural language processing and text classification.
+
+```{python,echo = FALSE,results='hide',warning=FALSE}
+inp = Input(shape = (maxlen,))
+x = Embedding(max_features, embed_size, weights = [embedding_matrix], trainable = True)(inp)
+x = SpatialDropout1D(0.5)(x)
+x = Bidirectional(LSTM(40, return_sequences=True))(x)
+x = Bidirectional(GRU(40, return_sequences=True))(x)
+avg_pool = GlobalAveragePooling1D()(x)
+max_pool = GlobalMaxPooling1D()(x)
+conc = concatenate([avg_pool, max_pool])
+outp = Dense(5, activation = 'sigmoid')(conc)
+model = Model(inputs = inp, outputs = outp)
+earlystop = EarlyStopping(monitor = 'val_loss', min_delta = 0, patience = 5)
+checkpoint = ModelCheckpoint(monitor = 'val_loss', save_best_only = True, filepath = 'best_model_one.h5')
+model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+history = model.fit(x_train, y, batch_size = 512, epochs = 20, validation_split = .1,
+          callbacks=[earlystop, checkpoint],verbose=0)
+y_test = model.predict([x_test], batch_size=1024, verbose = 0)
+scores = model.evaluate(x_test, test_samp[class_names].values, verbose = 0, batch_size=1024)
+```
+
+```{python,echo = FALSE,warning=FALSE}
+print("Accuracy:", scores[1]) 
+```
+
+```{python,echo = FALSE,warning=FALSE}
+plot_history(history)
+```
+
+## Results
+
+Finally, let’s discuss the results of our classification. The history of model training has been plotted with regards to classification accuracy and categorical cross-entropy. An overall test accuracy of around 87% is achieved, which vastly outperforms all other models. To see a more nuanced accuracy metric, investigate the confusion matrix. Clearly, the categories of Five and One are predicted with a relatively high accuracy. Categories Two, Three, and Four are slightly less accurate. This is a model limitation, but it is one we believe will be difficult to overcome, due to the subjective nature of reviews. It is often difficult to quantify what the difference between a Three and a Four is. To see this explanation in practice, let’s investigate individual cases of misclassification.
+
+```{python,echo = FALSE,warning=FALSE}
+matrix = metrics.confusion_matrix(y_test.argmax(axis=1),test_samp[class_names].values.argmax(axis=1))
+labels = ['1', '2','3','4','5']
+plt.figure(figsize=(8,6))
+sns.heatmap(matrix,xticklabels=labels, yticklabels=labels, annot=True, fmt='d', cmap="Blues", vmin = 0.2);
+plt.title('Confusion Matrix')
+plt.ylabel('True Class')
+plt.xlabel('Predicted Class')
+plt.show()
+```
+
+```{python}
+print("Predicted",y_test.argmax(axis=1)[605]+1)
+print("Actual",test_samp[class_names].values.argmax(axis=1)[605]+1)
+print(test_samp['text'].values[605])
+```
+
+First, we see a case where the prediction does not match the actual star value. Note the combination of positive and negative text. This is exactly what makes it so difficult to classify reviews of a mixed emotion.
+
+```{python}
+print("Predicted",y_test.argmax(axis=1)[1435]+1)
+print("Actual",test_samp[class_names].values.argmax(axis=1)[1435]+1)
+print(test_samp['text'].values[1435])
+```
+
+Next, we look at a review which was predicted to be a Five, but in actuality was a One. We immediately see the problem. This review is in Japanese. Since our model was not trained on Japanese characters, this will be input as a string of 200 zeroes. Clearly our model has language based limitations. This can be solved by training on a larger dataset.
+
+```{python}
+print("Predicted",y_test.argmax(axis=1)[498]+1)
+print("Actual",test_samp[class_names].values.argmax(axis=1)[498]+1)
+print(test_samp['text'].values[498])
+```
+
+Finally, we look at a review which was predicted to be One, and was actually a Five. We can see certain positive words. However, this review is overwhelmingly negative and repeats concerns of cleanliness numerous times. This may well be a case of user error. User misclassification is one area that we intended to explore, and so this is a potential avenue for future exploration.
+
+To expand upon that, a future application of our model as displayed above may be to identify misclassified reviews. The gravity of the misclassification is extreme. In the future, reviews which display such a grave error might be flagged as misclassified or fraudulent. This is the direction that we hope to move in with our project.
+
+## Assumptions
+
+Let’s discuss the assumptions we made in answering this question. We assumed that 1% of the data and the data provided by yelp is a great representation of all the restaurants in Canada and America. This was a necessary assumption, as training a model on the entirety of 5,000,000 reviews would take an inordinate amount of time on a student’s laptop. Additionally, this is reasonable since most people will react in a similar way towards the restaurants they like and those that they hate. Additionally, while one may question the validity of such an assumption, the results demonstrate the soundness. We obtained a really good result from our last model with an accuracy of around 87% and we have tested it using randomly and independently collected reviews online from yelp and in most cases it reacted appropriately. Clearly this assumption was necessary and didn’t compromise the overall results of our model. In the future it may be desirable to retrain the model and obtain more appropriate values for training and test error.
+
+An additional assumption inherent to our model was the validity of each review’s actual classification. As we saw in the few cases where our model incorrectly predicted the level of stars, there is a non-trivial number of reviews which may have been misclassified by the user. In these cases, manual inspection is required. But for the scope of this project we do not have the manpower or time to carry out such an investigation.
+
+## Limitations
+
+In our project, one of the most significant limitations will be the hardware problem. Our computers are not able to run the full 100% data. It will crash R Studio due to the fact that the memory is not big enough, and it will be functionally useless if used in a different language and software due to the sheer size of the dataset. For this project we were forced to sample only 1% of the data from the original dataset. Using this subsampled data, it still takes a long time to run the code and the computers’ temperature increases dramatically. Although the sample size is only around 45k, the number of rows of the dataset after tokenization for a unigram model still exceeded 1 million rows. Since this is only a sample, there might be some bias and we will not be able to collect all the information in its most complete form. if we had a high performance computer, or even access to a vGPU of some kind we would have a more accurate prediction for the model. With 1% of the data, we are able to achieve an accuracy of approximately 87% so with 100% of the data, I believe we could have an accuracy that will be even better.
+
+ Another limitation will be that the provided review dataset only has restaurants in several cities. There are no big cities like Los Angeles and New York and no small cities such as Reno and Champaign. So it might not represent all of the restaurants for Canada and America. We should have a larger datasets with restaurants all over the place. This is not a limitation we can overcome independently, but rather one which must be addressed by Yelp in another iteration of this data competition. Yelp is most likely not going to do this. There is no incentive for them to make this information more readily available, so we will have to make do with what data we are given.
+
+## Future Progress
+
+In the future, we could have a lot more to do with the current datasets. We are only able to input the restaurant categories for the wordcloud. We might be able to make an app and users can input the restaurant name and see the most used words for that restaurant using unigram, bigram and trigram tokens so they are able to have a glimpse about the restaurant’s condition and their popular food. We could also incorporate some other languages when training our neural network model which was misclassified and shown in the presentation slide.
+
+The nature of our future investigations are all directly connected to the limitations and assumptions of our project. Obviously given the opportunity we would like to train on data from multiple business types in multiple cities and multiple languages. This may decrease the accuracy of our model in the short term due to increased variation in inputs. However it will broaden the applicability of our model. In our estimation, a slight sacrifice in accuracy is more than worth the increase in utility.
+
+Additionally, new methods and algorithms in neural networks and natural language processing are introduced constantly. The state of the industry may change in a way that can improve our model.
+
+In conclusion, the state of this model and project is obviously in flux. It is a work in progress, and should continue to evolve pending the continuing advancements of natural language processing and neural networks. We will re-evaluate this model as times change. In the present, however, the classification of Yelp reviews undertaken in this project can be considered a moderate success.
+
+## Citations
+
+1. *Jeffrey Pennington, Richard Socher, and Christopher D. Manning. 2014. GloVe: Global Vectors for Word Representation*
+2. *https://www.cnn.com/travel/article/world-best-food-cultures/index.html*
+3. *https://www.bbc.com/food/cuisines*
+4. *https://edav.info/leaflet.html*
